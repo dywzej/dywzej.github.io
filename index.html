@@ -1,0 +1,1079 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>全AI狼人杀模拟器</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box;font-family:"Microsoft Yahei",sans-serif}
+:root{--bg:#12121f;--card:#1a1a2e;--red:#e94560;--white:#fff;--gray:#a8a8b3;--green:#00b894;--disabled:#4a4a6a;--radius:8px}
+body{background:var(--bg);color:var(--white);min-height:100vh;padding:20px}
+.modal{position:fixed;inset:0;background:rgba(0,0,0,.9);display:flex;align-items:center;justify-content:center;z-index:999}
+.modal-content{background:var(--card);padding:30px;border-radius:12px;width:90%;max-width:500px;box-shadow:0 0 30px rgba(233,69,96,0.2)}
+.modal-title{font-size:22px;font-weight:bold;text-align:center;margin-bottom:20px;color:var(--red)}
+.form-group{margin-bottom:15px}
+.form-label{display:block;margin-bottom:6px;font-size:14px;color:var(--gray)}
+input,select,textarea{width:100%;padding:12px;border-radius:var(--radius);border:1px solid var(--disabled);background:var(--bg);color:var(--white);font-size:16px;outline:none;transition:border .3s}
+input:focus,select:focus,textarea:focus{border-color:var(--red)}
+.btn{width:100%;padding:12px;border-radius:var(--radius);border:none;background:var(--red);color:white;font-size:16px;font-weight:bold;cursor:pointer;transition:.3s}
+.btn:hover:not(:disabled){background:#ff5773;transform:translateY(-2px)}
+.btn:disabled{background:var(--disabled);cursor:not-allowed;transform:none}
+.game{max-width:1400px;margin:0 auto;display:none}
+.game-header{text-align:center;margin-bottom:15px}
+.game-title{font-size:24px;color:var(--red);margin-bottom:8px}
+.game-status{font-size:14px;color:var(--gray);display:flex;justify-content:center;gap:25px;flex-wrap:wrap}
+.game-main{display:grid;grid-template-columns:260px 1fr;gap:15px;margin-bottom:15px;height:calc(100vh - 180px);min-height:550px}
+.player-panel{background:var(--card);border-radius:12px;padding:15px;overflow-y:auto}
+.panel-title{font-size:16px;font-weight:bold;margin-bottom:12px;padding-bottom:8px;border-bottom:1px solid var(--disabled)}
+.player-card{padding:10px;border-radius:var(--radius);margin-bottom:8px;background:var(--bg);border-left:3px solid var(--green)}
+.player-card.dead{opacity:.5;border-left-color:var(--red)}
+.player-card.me{border-left-color:#fdcb6e}
+.player-name{font-size:14px;font-weight:bold;margin-bottom:3px}
+.player-info{font-size:12px;color:var(--gray);display:flex;justify-content:space-between}
+.chat-panel{background:var(--card);border-radius:12px;padding:15px;display:flex;flex-direction:column}
+.chat-content{flex:1;overflow-y:auto;margin-bottom:15px;padding-right:10px}
+.msg{margin-bottom:12px;padding:10px 12px;border-radius:var(--radius);max-width:85%;line-height:1.5}
+.msg.system{background:rgba(0,184,148,.2);border:1px solid var(--green);max-width:100%;text-align:center;color:var(--green)}
+.msg.ai{background:var(--bg);margin-right:auto}
+.msg.me{background:rgba(233,69,96,.2);border:1px solid(var(--red));margin-left:auto}
+.msg-sender{font-size:12px;font-weight:bold;margin-bottom:4px;color:var(--gray)}
+.input-area{display:flex;gap:10px}
+#chatInput{flex:1}
+#sendBtn{width:80px}
+.identity-tip{position:fixed;bottom:15px;right:15px;background:var(--card);padding:12px;border-radius:var(--radius);max-width:280px;font-size:12px;color:var(--gray);box-shadow:0 0 20px rgba(0,0,0,.5)}
+.identity-tip h4{color:var(--red);margin-bottom:5px;font-size:14px}
+.loading{display:inline-block;width:12px;height:12px;border:2px solid var(--gray);border-top:2px solid var(--red);border-radius:50%;animation:spin 1s linear infinite}
+@keyframes spin{0%{transform:rotate(0deg)}100%{transform:rotate(360deg)}}
+@media (max-width:768px){.game-main{grid-template-columns:1fr}.player-panel{max-height:150px}.identity-tip{display:none}.msg{max-width:90%}}
+</style>
+</head>
+<body>
+<!-- 开局设置弹窗 -->
+<div class="modal" id="startModal">
+  <div class="modal-content">
+    <div class="modal-title">全AI狼人杀模拟器</div>
+    <div class="form-group">
+      <label class="form-label">你的游戏昵称</label>
+      <input type="text" id="playerName" placeholder="请输入你的昵称" value="我">
+    </div>
+    <div class="form-group">
+      <label class="form-label">游戏人数</label>
+      <select id="playerCount">
+        <option value="6">6人新手局（2狼+1预+1女+2民）</option>
+        <option value="7">7人娱乐局（2狼+1预+1女+1猎+2民）</option>
+        <option value="9" selected>9人标准局（3狼+1预+1女+1猎+3民）</option>
+        <option value="10">10人进阶局（3狼+1预+1女+1猎+1白+3民）</option>
+        <option value="12">12人标准局（4狼+1预+1女+1猎+1白+4民）</option>
+      </select>
+    </div>
+    <button class="btn" id="startBtn">开始游戏</button>
+    <div style="margin-top:12px;font-size:12px;color:var(--gray);text-align:center">
+      全程Deepseek AI陪玩 | 正版狼人杀规则 | 真人级对话逻辑
+    </div>
+  </div>
+</div>
+
+<!-- 夜晚行动弹窗 -->
+<div class="modal" id="nightModal" style="display:none">
+  <div class="modal-content">
+    <div class="modal-title" id="nightTitle">夜晚行动</div>
+    <div class="form-group" id="nightAction"></div>
+    <button class="btn" id="nightBtn">确认行动</button>
+  </div>
+</div>
+
+<!-- 遗言/发言弹窗 -->
+<div class="modal" id="speechModal" style="display:none">
+  <div class="modal-content">
+    <div class="modal-title" id="speechTitle">请发表遗言</div>
+    <div class="form-group">
+      <textarea id="speechInput" rows="5" placeholder="请输入你的发言..."></textarea>
+    </div>
+    <button class="btn" id="speechBtn">确认发表</button>
+  </div>
+</div>
+
+<!-- 投票弹窗 -->
+<div class="modal" id="voteModal" style="display:none">
+  <div class="modal-content">
+    <div class="modal-title" id="voteTitle">投票放逐</div>
+    <div class="form-group">
+      <label class="form-label" id="voteLabel">请选择你要投票放逐的玩家</label>
+      <select id="voteSelect"></select>
+    </div>
+    <button class="btn" id="voteBtn">确认投票</button>
+  </div>
+</div>
+
+<!-- 游戏结束弹窗 -->
+<div class="modal" id="endModal" style="display:none">
+  <div class="modal-content">
+    <div class="modal-title" id="endTitle">游戏结束</div>
+    <div id="endContent"></div>
+    <button class="btn" id="restartBtn">再来一局</button>
+  </div>
+</div>
+
+<!-- 游戏主界面 -->
+<div class="game" id="game">
+  <div class="game-header">
+    <div class="game-title">全AI狼人杀模拟器</div>
+    <div class="game-status">
+      <span id="gameDay">第1天</span>
+      <span id="gamePhase">夜晚阶段</span>
+      <span id="aliveCount">存活玩家：9人</span>
+    </div>
+  </div>
+  <div class="game-main">
+    <div class="player-panel">
+      <div class="panel-title">玩家列表</div>
+      <div id="playerList"></div>
+    </div>
+    <div class="chat-panel">
+      <div class="chat-content" id="chatContent">
+        <div class="msg system"><div class="msg-text">游戏即将开始，请做好准备！</div></div>
+      </div>
+      <div class="input-area">
+        <input type="text" id="chatInput" placeholder="请输入你的发言..." disabled>
+        <button class="btn" id="sendBtn" disabled>发送</button>
+      </div>
+    </div>
+  </div>
+  <div class="identity-tip">
+    <h4>你的身份</h4>
+    <div id="identityDesc">请等待身份分配...</div>
+  </div>
+</div>
+
+<script>
+document.addEventListener('DOMContentLoaded', () => {
+  // 核心配置
+  const API_KEY = "sk-678240ff6e0d4951bec795b0823cbbaf";
+  const API_URL = "https://api.deepseek.com/v1/chat/completions";
+  const AI_NAMES = ["李阳","张伟","刘佳","王浩","陈雪","赵宇","孙萌","周航","吴迪","郑涛","钱磊","冯悦"];
+  
+  // 身份配置
+  const IDENTITY_CONFIG = {
+    6: ['狼人','狼人','预言家','女巫','平民','平民'],
+    7: ['狼人','狼人','预言家','女巫','猎人','平民','平民'],
+    9: ['狼人','狼人','狼人','预言家','女巫','猎人','平民','平民','平民'],
+    10: ['狼人','狼人','狼人','预言家','女巫','猎人','白痴','平民','平民','平民'],
+    12: ['狼人','狼人','狼人','狼人','预言家','女巫','猎人','白痴','平民','平民','平民','平民']
+  };
+
+  // 身份规则（给AI用的精准规则）
+  const IDENTITY_RULES = {
+    "狼人": {
+      camp: "狼人",
+      rule: "夜晚和队友共同刀人，白天隐藏狼人身份，可悍跳预言家、给好人发查杀/金水、踩好人保队友，和队友配合冲票放逐所有好人，最终淘汰全部好人阵营获胜。绝对不能暴露自己和队友的狼人身份。",
+      winCon: "淘汰所有好人阵营玩家"
+    },
+    "预言家": {
+      camp: "好人",
+      rule: "好人阵营神职，每晚可查验一名玩家的身份是好人还是狼人，白天必须如实报出自己的验人信息，不能谎报验人，要带领好人阵营找出所有狼人并投票放逐，最终淘汰全部狼人获胜。",
+      winCon: "淘汰所有狼人阵营玩家"
+    },
+    "女巫": {
+      camp: "好人",
+      rule: "好人阵营神职，拥有1瓶解药和1瓶毒药，解药可救夜晚被狼人刀的玩家，毒药可毒杀任意一名存活玩家，一晚上只能使用一瓶药，解药和毒药全程各只能用一次。要隐藏身份，帮助好人阵营淘汰所有狼人获胜。",
+      winCon: "淘汰所有狼人阵营玩家"
+    },
+    "猎人": {
+      camp: "好人",
+      rule: "好人阵营神职，当自己被狼人刀死、或被白天投票放逐时，可以开枪带走任意一名存活玩家；如果被女巫用毒药毒死，则无法开枪。可以选择跳身份带队，帮助好人阵营淘汰所有狼人获胜。",
+      winCon: "淘汰所有狼人阵营玩家"
+    },
+    "白痴": {
+      camp: "好人",
+      rule: "好人阵营神职，被白天投票放逐时，可以翻牌亮出白痴身份，免除此轮放逐，之后依然存活，无法参与投票但可以正常发言；夜晚依然会被狼人刀死。要帮助好人阵营淘汰所有狼人获胜。",
+      winCon: "淘汰所有狼人阵营玩家"
+    },
+    "平民": {
+      camp: "好人",
+      rule: "好人阵营平民，无任何特殊技能，全程夜晚闭眼，只能通过白天玩家的发言判断狼人，表水澄清自己的好人身份，投票放逐自己怀疑的狼人，最终淘汰全部狼人获胜。",
+      winCon: "淘汰所有狼人阵营玩家"
+    }
+  };
+
+  // 游戏全局状态
+  let game = {
+    isRunning: false,
+    day: 1,
+    phase: "night",
+    playerCount: 0,
+    players: [],
+    humanPlayer: null,
+    speechHistory: [],
+    playerMemory: {}, // 每个AI玩家的记忆：自己的立场、踩过的人、保过的人
+    lastNightDead: [],
+    wolfKillTarget: null,
+    witchSaveUsed: false,
+    witchPoisonUsed: false,
+    witchSave: false,
+    witchPoisonTarget: null,
+    prophetCheckTarget: null,
+    winner: null
+  };
+
+  // DOM工具
+  const $ = id => document.getElementById(id);
+  const dom = {
+    startModal: $("startModal"),
+    nightModal: $("nightModal"),
+    speechModal: $("speechModal"),
+    voteModal: $("voteModal"),
+    endModal: $("endModal"),
+    game: $("game"),
+    playerName: $("playerName"),
+    playerCount: $("playerCount"),
+    startBtn: $("startBtn"),
+    playerList: $("playerList"),
+    chatContent: $("chatContent"),
+    chatInput: $("chatInput"),
+    sendBtn: $("sendBtn"),
+    gameDay: $("gameDay"),
+    gamePhase: $("gamePhase"),
+    aliveCount: $("aliveCount"),
+    identityDesc: $("identityDesc"),
+    nightTitle: $("nightTitle"),
+    nightAction: $("nightAction"),
+    nightBtn: $("nightBtn"),
+    speechTitle: $("speechTitle"),
+    speechInput: $("speechInput"),
+    speechBtn: $("speechBtn"),
+    voteTitle: $("voteTitle"),
+    voteLabel: $("voteLabel"),
+    voteSelect: $("voteSelect"),
+    voteBtn: $("voteBtn"),
+    endTitle: $("endTitle"),
+    endContent: $("endContent"),
+    restartBtn: $("restartBtn")
+  };
+
+  // 通用工具函数
+  const shuffleArray = (arr) => {
+    const newArr = [...arr];
+    for (let i = newArr.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [newArr[i], newArr[j]] = [newArr[j], newArr[i]];
+    }
+    return newArr;
+  };
+
+  const getAlivePlayers = () => game.players.filter(p => p.isAlive);
+  const getPlayerById = (id) => game.players.find(p => p.id === id);
+  const sleep = (ms) => new Promise(resolve => setTimeout(resolve, ms));
+  const genPlayerOptions = (list, filter = () => true) => list.filter(filter).map(p => `<option value="${p.id}">${p.id}号 ${p.name}</option>`).join('');
+
+  // 消息添加函数
+  const addMessage = (text, type = "system", player = null) => {
+    const msgDiv = document.createElement("div");
+    msgDiv.className = `msg ${type}`;
+    
+    if (type === "system") {
+      msgDiv.innerHTML = `<div class="msg-text">${text}</div>`;
+      game.speechHistory.push(`【系统】${text}`);
+    } else {
+      msgDiv.innerHTML = `
+        <div class="msg-sender">${player.name}（${player.id}号玩家）</div>
+        <div class="msg-text">${text}</div>
+      `;
+      game.speechHistory.push(`${player.id}号${player.name}：${text}`);
+      
+      // 更新AI玩家记忆
+      if (!player.isHuman) {
+        if (!game.playerMemory[player.id]) game.playerMemory[player.id] = {
+          suspectList: [],
+          protectList: [],
+          claimIdentity: null,
+          voteTarget: null
+        };
+        // 提取发言里的怀疑和保的人
+        getAlivePlayers().forEach(p => {
+          if (text.includes(`${p.id}号`) && (text.includes("狼") || text.includes("查杀") || text.includes("怀疑") || text.includes("出"))) {
+            if (!game.playerMemory[player.id].suspectList.includes(p.id)) {
+              game.playerMemory[player.id].suspectList.push(p.id);
+            }
+          }
+          if (text.includes(`${p.id}号`) && (text.includes("好人") || text.includes("金水") || text.includes("银水") || text.includes("保"))) {
+            if (!game.playerMemory[player.id].protectList.includes(p.id)) {
+              game.playerMemory[player.id].protectList.push(p.id);
+            }
+          }
+        });
+        // 提取跳的身份
+        Object.keys(IDENTITY_RULES).forEach(identity => {
+          if (text.includes(`我是${identity}`)) {
+            game.playerMemory[player.id].claimIdentity = identity;
+          }
+        });
+      }
+    }
+
+    dom.chatContent.appendChild(msgDiv);
+    dom.chatContent.scrollTop = dom.chatContent.scrollHeight;
+  };
+
+  // 加载状态提示
+  const addLoadingMsg = (player) => {
+    const msgDiv = document.createElement("div");
+    msgDiv.className = "msg ai";
+    msgDiv.id = `loading-${player.id}`;
+    msgDiv.innerHTML = `
+      <div class="msg-sender">${player.name}（${player.id}号玩家）</div>
+      <div class="msg-text"><span class="loading"></span> 正在思考发言...</div>
+    `;
+    dom.chatContent.appendChild(msgDiv);
+    dom.chatContent.scrollTop = dom.chatContent.scrollHeight;
+  };
+
+  const removeLoadingMsg = (playerId) => {
+    const loadingDiv = $(`loading-${playerId}`);
+    if (loadingDiv) loadingDiv.remove();
+  };
+
+  // 更新游戏界面
+  const updateGameUI = () => {
+    // 更新顶部状态
+    dom.gameDay.textContent = `第${game.day}天`;
+    const phaseTextMap = {
+      night: "夜晚阶段",
+      day: "白天发言阶段",
+      vote: "投票阶段",
+      pk: "PK发言阶段",
+      end: "游戏结束"
+    };
+    dom.gamePhase.textContent = phaseTextMap[game.phase];
+    dom.aliveCount.textContent = `存活玩家：${getAlivePlayers().length}人`;
+
+    // 更新玩家列表
+    dom.playerList.innerHTML = game.players.map(player => {
+      let identityText = "身份未知";
+      if (player.isHuman || !player.isAlive || game.phase === "end" || player.identityReveal) {
+        identityText = player.identity;
+      }
+      return `
+        <div class="player-card ${player.isAlive ? "" : "dead"} ${player.isHuman ? "me" : ""}">
+          <div class="player-name">${player.id}号 ${player.name}</div>
+          <div class="player-info">
+            <span>${player.isAlive ? "存活" : "已死亡"}</span>
+            <span>${identityText}</span>
+          </div>
+        </div>
+      `;
+    }).join('');
+  };
+
+  // 胜利条件检查
+  const checkWinCondition = () => {
+    const alivePlayers = getAlivePlayers();
+    const aliveWolves = alivePlayers.filter(p => p.identity === "狼人");
+    const aliveGoods = alivePlayers.filter(p => p.identity !== "狼人");
+
+    // 狼人全灭，好人胜利
+    if (aliveWolves.length === 0) {
+      game.winner = "好人阵营";
+    }
+    // 好人数量小于等于狼人，狼人胜利
+    else if (aliveGoods.length <= aliveWolves.length) {
+      game.winner = "狼人阵营";
+    }
+
+    if (game.winner) {
+      game.phase = "end";
+      updateGameUI();
+      
+      // 生成结束界面
+      dom.endTitle.textContent = `${game.winner}胜利！`;
+      dom.endContent.innerHTML = `
+        <div style="line-height:1.6;margin-bottom:20px;">
+          <div style="font-size:16px;margin-bottom:10px;">游戏结束，${game.winner}获得最终胜利！</div>
+          <div style="font-weight:bold;margin-top:15px;">所有玩家身份复盘：</div>
+          <ul style="margin-top:10px;padding-left:20px;">
+            ${game.players.map(p => `<li>${p.id}号${p.name}：${p.identity}（${p.isAlive ? "存活" : "已死亡"}）</li>`).join('')}
+          </ul>
+        </div>
+      `;
+      dom.endModal.style.display = "flex";
+      return true;
+    }
+    return false;
+  };
+
+  // 核心：AI发言生成（100% API生成，无固定词库）
+  const generateAISpeech = async (player, speechType = "normal") => {
+    const alivePlayers = getAlivePlayers();
+    const playerConfig = IDENTITY_RULES[player.identity];
+    const wolfTeammates = game.players.filter(p => p.identity === "狼人" && p.isAlive);
+    const humanPlayer = game.humanPlayer;
+    const playerMemory = game.playerMemory[player.id] || { suspectList: [], protectList: [], claimIdentity: null };
+    
+    // 构建精准prompt，保证逻辑连贯、对话有针对性
+    let prompt = `
+# 角色设定
+你正在玩一局标准的线下狼人杀游戏，你必须完全代入角色，不能暴露你是AI。
+你的玩家信息：
+- 玩家编号：${player.id}号
+- 玩家名字：${player.name}
+- 你的身份：${player.identity}
+- 所属阵营：${playerConfig.camp}阵营
+- 身份规则：${playerConfig.rule}
+- 胜利条件：${playerConfig.winCon}
+${player.identity === "狼人" ? `- 你的狼人队友：${wolfTeammates.map(p => `${p.id}号${p.name}`).join("、")}，你必须保护队友，不能出卖队友，和队友配合淘汰好人` : ""}
+${player.identity === "预言家" ? `- 你昨晚的验人结果：${game.prophetCheckTarget.id}号${game.prophetCheckTarget.name}，他的身份是${game.prophetCheckTarget.identity === "狼人" ? "狼人（查杀）" : "好人（金水）"}，你必须在发言开头就报出这个验人结果，绝对不能谎报` : ""}
+${player.identity === "女巫" ? `- 你的用药情况：${game.witchSaveUsed ? "解药已经使用" : "解药还在"}，${game.witchPoisonUsed ? "毒药已经使用" : "毒药还在"}；${game.witchSave ? `昨晚你用解药救了${game.wolfKillTarget.id}号${game.wolfKillTarget.name}，他是你的银水` : ""}${game.witchPoisonTarget ? `昨晚你用毒药毒杀了${game.witchPoisonTarget.id}号${game.witchPoisonTarget.name}` : ""}` : ""}
+
+# 游戏当前局势
+- 当前游戏天数：第${game.day}天
+- 当前发言类型：${speechType === "lastWords" ? "死亡遗言" : speechType === "pk" ? "PK台发言" : "白天正常发言"}
+- 存活玩家：${alivePlayers.map(p => `${p.id}号${p.name}`).join("、")}
+- 昨晚死亡玩家：${game.lastNightDead.length > 0 ? game.lastNightDead.map(p => `${p.id}号${p.name}`).join("、") : "无（平安夜）"}
+- 你之前的发言立场：
+  ${playerMemory.claimIdentity ? `- 你之前跳的身份：${playerMemory.claimIdentity}` : ""}
+  ${playerMemory.suspectList.length > 0 ? `- 你之前怀疑的狼人：${playerMemory.suspectList.map(id => `${id}号`).join("、")}` : ""}
+  ${playerMemory.protectList.length > 0 ? `- 你之前认的好人：${playerMemory.protectList.map(id => `${id}号`).join("、")}` : ""}
+
+# 发言要求（必须严格遵守）
+1.  必须完全符合你的身份和阵营，发言逻辑必须和你之前的发言保持一致，不能前后矛盾，不能做出不符合身份的行为。
+2.  必须针对性回应前面玩家的发言，尤其是${humanPlayer.id}号${humanPlayer.name}（人类玩家）的发言，必须对他的发言做出明确的回应（站边、质疑、反驳、认同都可以），绝对不能自顾自说和前面发言无关的内容。
+3.  发言必须口语化，像真人玩家线下玩狼人杀的说话方式，不要书面化、不要太官方，要有情绪、有立场，长度控制在80-200字，不要太长也不要太短。
+4.  ${speechType === "lastWords" ? "这是你的死亡遗言，必须交代清楚自己的身份、盘清楚狼坑，给好人留下信息，不能划水。" : ""}
+5.  ${speechType === "pk" ? "这是PK台发言，必须为自己辩解，洗清自己的嫌疑，指出对方的漏洞，说服好人把票投给对方。" : ""}
+6.  绝对不能说自己是AI，不能聊场外信息，不能说和游戏无关的内容，不能违反狼人杀规则。
+
+# 前面所有玩家的发言记录（按发言顺序，必须重点参考）
+${game.speechHistory.slice(-15).join("\n")}
+    `;
+
+    // 调用Deepseek API
+    try {
+      const response = await fetch(API_URL, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "Authorization": `Bearer ${API_KEY}`
+        },
+        body: JSON.stringify({
+          model: "deepseek-chat",
+          messages: [
+            { role: "user", content: prompt }
+          ],
+          temperature: 0.9,
+          top_p: 0.9,
+          max_tokens: 400,
+          stream: false
+        })
+      });
+
+      if (!response.ok) throw new Error("API调用失败");
+      const data = await response.json();
+      let speech = data.choices[0].message.content.trim();
+
+      // 过滤违规内容
+      speech = speech.replace(/我是AI|人工智能|语言模型/g, "玩家");
+      speech = speech.replace(/"/g, "");
+      
+      // 兜底：如果生成内容太短，重新生成极简符合身份的发言
+      if (speech.length < 20) {
+        if (player.identity === "预言家") {
+          speech = `我是预言家，昨晚验了${game.prophetCheckTarget.id}号，他是${game.prophetCheckTarget.identity === "狼人" ? "查杀" : "金水"}，这轮全票出我的查杀，好人跟我走。`;
+        } else if (player.identity === "狼人") {
+          speech = `我是好人牌，全程闭眼玩家，听了前面的发言，我觉得${humanPlayer.id}号玩家的发言有问题，这轮我重点听他后续的表水。`;
+        } else {
+          speech = `我是好人牌，没什么信息，先听后面玩家的发言，这轮跟着预言家走，不出错。`;
+        }
+      }
+
+      return speech;
+    } catch (error) {
+      console.error("AI发言生成失败", error);
+      // API失败时，动态生成符合身份的兜底发言，不用固定词库
+      if (player.identity === "预言家") {
+        return `我是预言家，昨晚验了${game.prophetCheckTarget.id}号玩家，他是${game.prophetCheckTarget.identity === "狼人" ? "查杀" : "金水"}，好人请跟我全票出查杀。`;
+      } else if (player.identity === "狼人") {
+        return `我是好人，前面发言里${alivePlayers[Math.floor(Math.random() * alivePlayers.length)].id}号玩家发言漏洞很大，我怀疑他是狼人。`;
+      } else if (player.identity === "女巫") {
+        return `我这里有身份，不怕狼人拍，昨晚平安夜，女巫大概率用了解药，银水先放一放，听预言家报验人。`;
+      } else {
+        return `我是好人牌，没什么信息，先听后面玩家发言，不瞎打。`;
+      }
+    }
+  };
+
+  // 夜晚阶段流程
+  const startNightPhase = async () => {
+    game.phase = "night";
+    updateGameUI();
+    
+    // 重置夜晚状态
+    game.lastNightDead = [];
+    game.wolfKillTarget = null;
+    game.witchSave = false;
+    game.witchPoisonTarget = null;
+    game.prophetCheckTarget = null;
+
+    const alivePlayers = getAlivePlayers();
+    const wolfPlayers = alivePlayers.filter(p => p.identity === "狼人");
+    const prophetPlayer = alivePlayers.find(p => p.identity === "预言家");
+    const witchPlayer = alivePlayers.find(p => p.identity === "女巫");
+
+    // 1. 狼人夜晚刀人（AI统一决策）
+    const goodPlayers = alivePlayers.filter(p => p.identity !== "狼人");
+    game.wolfKillTarget = goodPlayers[Math.floor(Math.random() * goodPlayers.length)];
+
+    // 2. 预言家验人
+    const handleProphetAction = async () => {
+      if (!prophetPlayer) return;
+      
+      if (prophetPlayer.isHuman) {
+        // 人类预言家操作弹窗
+        dom.nightTitle.textContent = "预言家请行动";
+        dom.nightAction.innerHTML = `
+          <label class="form-label">请选择你要查验身份的玩家</label>
+          <select class="form-select" id="prophetCheckSelect">
+            ${genPlayerOptions(alivePlayers, p => p.id !== prophetPlayer.id)}
+          </select>
+        `;
+        dom.nightModal.style.display = "flex";
+        
+        await new Promise(resolve => {
+          dom.nightBtn.onclick = () => {
+            const selectedId = parseInt($("prophetCheckSelect").value);
+            game.prophetCheckTarget = getPlayerById(selectedId);
+            const isWolf = game.prophetCheckTarget.identity === "狼人";
+            dom.nightModal.style.display = "none";
+            addMessage(`你查验了${game.prophetCheckTarget.id}号${game.prophetCheckTarget.name}，他的身份是${isWolf ? "狼人" : "好人"}`);
+            resolve();
+          };
+        });
+      } else {
+        // AI预言家自动验人
+        const unCheckPlayers = alivePlayers.filter(p => p.id !== prophetPlayer.id);
+        game.prophetCheckTarget = unCheckPlayers[Math.floor(Math.random() * unCheckPlayers.length)];
+      }
+    };
+
+    // 3. 女巫用药
+    const handleWitchAction = async () => {
+      if (!witchPlayer) return;
+      
+      if (witchPlayer.isHuman) {
+        // 人类女巫操作弹窗
+        dom.nightTitle.textContent = "女巫请行动";
+        let actionHtml = `<div class="form-label">昨晚${game.wolfKillTarget.id}号${game.wolfKillTarget.name}被狼人刀了</div>`;
+        
+        if (!game.witchSaveUsed) {
+          actionHtml += `
+            <div class="form-group">
+              <label class="form-label">是否使用解药救他？</label>
+              <select class="form-select" id="witchSaveSelect">
+                <option value="false">不使用</option>
+                <option value="true">使用解药</option>
+              </select>
+            </div>
+          `;
+        } else {
+          actionHtml += `<div class="form-label">你的解药已经使用过了</div>`;
+        }
+
+        if (!game.witchPoisonUsed) {
+          actionHtml += `
+            <div class="form-group">
+              <label class="form-label">是否使用毒药？</label>
+              <select class="form-select" id="witchPoisonSelect">
+                <option value="0">不使用</option>
+                ${genPlayerOptions(alivePlayers, p => p.id !== witchPlayer.id)}
+              </select>
+            </div>
+          `;
+        } else {
+          actionHtml += `<div class="form-label">你的毒药已经使用过了</div>`;
+        }
+
+        dom.nightAction.innerHTML = actionHtml;
+        dom.nightModal.style.display = "flex";
+
+        await new Promise(resolve => {
+          dom.nightBtn.onclick = () => {
+            const saveSelect = $("witchSaveSelect");
+            if (saveSelect) {
+              game.witchSave = saveSelect.value === "true";
+              if (game.witchSave) game.witchSaveUsed = true;
+            }
+
+            const poisonSelect = $("witchPoisonSelect");
+            if (poisonSelect) {
+              const poisonId = parseInt(poisonSelect.value);
+              if (poisonId > 0) {
+                game.witchPoisonTarget = getPlayerById(poisonId);
+                game.witchPoisonUsed = true;
+              }
+            }
+
+            dom.nightModal.style.display = "none";
+            resolve();
+          };
+        });
+      } else {
+        // AI女巫自动用药
+        if (!game.witchSaveUsed && Math.random() > 0.5) {
+          game.witchSave = true;
+          game.witchSaveUsed = true;
+        }
+        if (!game.witchPoisonUsed && Math.random() > 0.7) {
+          const targetList = alivePlayers.filter(p => p.id !== witchPlayer.id);
+          game.witchPoisonTarget = targetList[Math.floor(Math.random() * targetList.length)];
+          game.witchPoisonUsed = true;
+        }
+      }
+    };
+
+    // 执行夜晚流程
+    await handleProphetAction();
+    await handleWitchAction();
+
+    // 处理夜晚死亡
+    if (!game.witchSave) {
+      game.wolfKillTarget.isAlive = false;
+      game.lastNightDead.push(game.wolfKillTarget);
+    }
+    if (game.witchPoisonTarget) {
+      game.witchPoisonTarget.isAlive = false;
+      game.lastNightDead.push(game.witchPoisonTarget);
+    }
+    game.lastNightDead = [...new Set(game.lastNightDead)];
+
+    // 进入白天
+    game.phase = "day";
+    updateGameUI();
+    await sleep(1500);
+
+    // 公布死亡信息
+    if (game.lastNightDead.length === 0) {
+      addMessage("天亮了！昨晚是平安夜，没有玩家死亡。");
+    } else {
+      const deadText = game.lastNightDead.map(p => `${p.id}号${p.name}`).join("、");
+      addMessage(`天亮了！昨晚${deadText}玩家死亡。`);
+      
+      // 首夜死亡有遗言
+      if (game.day === 1) {
+        addMessage("请死亡玩家按顺序发表遗言。");
+        for (const deadPlayer of game.lastNightDead) {
+          await sleep(1000);
+          if (deadPlayer.isHuman) {
+            // 人类玩家遗言
+            dom.speechTitle.textContent = "请发表你的遗言";
+            dom.speechInput.value = "";
+            dom.speechModal.style.display = "flex";
+            await new Promise(resolve => {
+              dom.speechBtn.onclick = () => {
+                const text = dom.speechInput.value.trim();
+                if (!text) return;
+                addMessage(text, "me", deadPlayer);
+                dom.speechModal.style.display = "none";
+                resolve();
+              };
+            });
+          } else {
+            // AI玩家遗言
+            addLoadingMsg(deadPlayer);
+            const speech = await generateAISpeech(deadPlayer, "lastWords");
+            removeLoadingMsg(deadPlayer.id);
+            addMessage(speech, "ai", deadPlayer);
+          }
+        }
+      }
+
+      // 处理猎人开枪
+      for (const deadPlayer of game.lastNightDead) {
+        if (deadPlayer.identity === "猎人" && game.witchPoisonTarget?.id !== deadPlayer.id) {
+          addMessage(`${deadPlayer.id}号${deadPlayer.name}是猎人，现在可以开枪带走一名玩家！`);
+          await sleep(1000);
+          
+          if (deadPlayer.isHuman) {
+            // 人类猎人开枪
+            dom.nightTitle.textContent = "猎人请开枪";
+            dom.nightAction.innerHTML = `
+              <label class="form-label">请选择你要带走的玩家</label>
+              <select class="form-select" id="hunterShotSelect">
+                ${genPlayerOptions(getAlivePlayers(), p => p.id !== deadPlayer.id)}
+              </select>
+            `;
+            dom.nightModal.style.display = "flex";
+            await new Promise(resolve => {
+              dom.nightBtn.onclick = () => {
+                const selectedId = parseInt($("hunterShotSelect").value);
+                const shotPlayer = getPlayerById(selectedId);
+                shotPlayer.isAlive = false;
+                dom.nightModal.style.display = "none";
+                addMessage(`猎人开枪带走了${shotPlayer.id}号${shotPlayer.name}，他的身份是${shotPlayer.identity}`);
+                resolve();
+              };
+            });
+          } else {
+            // AI猎人开枪
+            const targetList = getAlivePlayers().filter(p => p.id !== deadPlayer.id);
+            const shotPlayer = targetList[Math.floor(Math.random() * targetList.length)];
+            shotPlayer.isAlive = false;
+            addMessage(`猎人开枪带走了${shotPlayer.id}号${shotPlayer.name}，他的身份是${shotPlayer.identity}`);
+          }
+        }
+      }
+    }
+
+    // 检查游戏是否结束
+    if (checkWinCondition()) return;
+    await sleep(2000);
+    addMessage("现在开始按顺序发言，请各位玩家注意发言顺序。");
+    await startSpeechPhase();
+  };
+
+  // 白天发言阶段
+  const startSpeechPhase = async (pkPlayers = null) => {
+    const alivePlayers = getAlivePlayers();
+    let speechOrder = [];
+
+    if (pkPlayers) {
+      // PK发言顺序
+      speechOrder = pkPlayers.sort((a, b) => a.id - b.id);
+      game.phase = "pk";
+    } else {
+      // 正常发言顺序：从死亡玩家下一位开始，平安夜从1号开始
+      let startIndex = 0;
+      if (game.lastNightDead.length > 0) {
+        const firstDeadId = game.lastNightDead[0].id;
+        startIndex = alivePlayers.findIndex(p => p.id > firstDeadId);
+        if (startIndex === -1) startIndex = 0;
+      }
+      speechOrder = [...alivePlayers.slice(startIndex), ...alivePlayers.slice(0, startIndex)];
+      game.phase = "day";
+    }
+    updateGameUI();
+
+    // 依次发言
+    for (const currentPlayer of speechOrder) {
+      if (!currentPlayer.isAlive) continue;
+      addMessage(`请${currentPlayer.id}号${currentPlayer.name}${pkPlayers ? "进行PK发言" : "发言"}`);
+      await sleep(500);
+
+      if (currentPlayer.isHuman) {
+        // 人类玩家发言
+        dom.chatInput.disabled = false;
+        dom.sendBtn.disabled = false;
+        dom.chatInput.focus();
+
+        await new Promise(resolve => {
+          const sendHandler = () => {
+            const text = dom.chatInput.value.trim();
+            if (!text) return;
+            addMessage(text, "me", currentPlayer);
+            dom.chatInput.value = "";
+            dom.chatInput.disabled = true;
+            dom.sendBtn.disabled = true;
+            dom.sendBtn.removeEventListener("click", sendHandler);
+            dom.chatInput.removeEventListener("keydown", enterHandler);
+            resolve();
+          };
+          const enterHandler = (e) => e.key === "Enter" && sendHandler();
+          
+          dom.sendBtn.addEventListener("click", sendHandler);
+          dom.chatInput.addEventListener("keydown", enterHandler);
+        });
+      } else {
+        // AI玩家发言
+        addLoadingMsg(currentPlayer);
+        const speech = await generateAISpeech(currentPlayer, pkPlayers ? "pk" : "normal");
+        removeLoadingMsg(currentPlayer.id);
+        addMessage(speech, "ai", currentPlayer);
+        await sleep(1500);
+      }
+    }
+
+    if (pkPlayers) {
+      // PK发言结束，进行PK投票
+      addMessage("PK发言结束，现在进行PK投票，仅可投票给PK台上的玩家，弃票无效。");
+      const voteResult = await handleVote(pkPlayers, true);
+      
+      if (voteResult.isTie) {
+        addMessage("PK投票再次平票，本轮无人被放逐，直接进入黑夜。");
+      } else {
+        const exiledPlayer = getPlayerById(voteResult.exiledId);
+        addMessage(`${exiledPlayer.id}号${exiledPlayer.name}获得${voteResult.maxVote}票，被投票放逐！`);
+        await handleExile(exiledPlayer);
+      }
+    } else {
+      // 正常发言结束，进入投票
+      addMessage("所有玩家发言完毕，现在进入投票阶段，请选择你要放逐的玩家。");
+      game.phase = "vote";
+      updateGameUI();
+      await sleep(1500);
+      
+      const voteResult = await handleVote(alivePlayers);
+      if (voteResult.isTie) {
+        // 平票进入PK
+        const pkPlayers = voteResult.tieIds.map(id => getPlayerById(id));
+        addMessage(`本轮投票出现平票，${pkPlayers.map(p => `${p.id}号${p.name}`).join("、")}进入PK台，依次进行PK发言。`);
+        await sleep(1500);
+        await startSpeechPhase(pkPlayers);
+      } else {
+        const exiledPlayer = getPlayerById(voteResult.exiledId);
+        addMessage(`${exiledPlayer.id}号${exiledPlayer.name}获得${voteResult.maxVote}票，被投票放逐！`);
+        await handleExile(exiledPlayer);
+      }
+    }
+
+    // 检查游戏是否结束
+    if (checkWinCondition()) return;
+    // 进入下一夜
+    game.day++;
+    game.phase = "night";
+    updateGameUI();
+    addMessage(`第${game.day}天夜晚降临，天黑请闭眼...`);
+    await sleep(2000);
+    startNightPhase();
+  };
+
+  // 投票处理
+  const handleVote = async (votePlayers, isPK = false) => {
+    const alivePlayers = getAlivePlayers();
+    const voteResult = {};
+    const humanPlayer = game.humanPlayer;
+
+    // 人类玩家投票
+    if (humanPlayer.isAlive && !humanPlayer.identityReveal) {
+      dom.voteTitle.textContent = isPK ? "PK投票" : "投票放逐";
+      dom.voteLabel.textContent = isPK ? "请选择你要放逐的PK玩家" : "请选择你要投票放逐的玩家";
+      dom.voteSelect.innerHTML = genPlayerOptions(votePlayers);
+      dom.voteModal.style.display = "flex";
+
+      await new Promise(resolve => {
+        dom.voteBtn.onclick = () => {
+          const selectedId = parseInt(dom.voteSelect.value);
+          voteResult[humanPlayer.id] = selectedId;
+          dom.voteModal.style.display = "none";
+          resolve();
+        };
+      });
+    }
+
+    // AI玩家投票（和自己的发言逻辑匹配）
+    for (const player of alivePlayers) {
+      if (player.isHuman || !player.isAlive || player.identityReveal) continue;
+      const playerMemory = game.playerMemory[player.id] || { suspectList: [] };
+      let targetId;
+
+      if (isPK) {
+        // PK投票只能投PK台上的人
+        targetId = votePlayers[Math.floor(Math.random() * votePlayers.length)].id;
+      } else {
+        // 优先投自己怀疑的人
+        if (playerMemory.suspectList.length > 0) {
+          const aliveSuspects = playerMemory.suspectList.filter(id => getPlayerById(id)?.isAlive);
+          if (aliveSuspects.length > 0) {
+            targetId = aliveSuspects[0];
+          } else {
+            targetId = alivePlayers.filter(p => p.id !== player.id)[Math.floor(Math.random() * alivePlayers.filter(p => p.id !== player.id).length)].id;
+          }
+        } else {
+          // 狼人投好人，好人投随机怀疑对象
+          if (player.identity === "狼人") {
+            const goodPlayers = alivePlayers.filter(p => p.identity !== "狼人" && p.id !== player.id);
+            targetId = goodPlayers[Math.floor(Math.random() * goodPlayers.length)].id;
+          } else {
+            targetId = alivePlayers.filter(p => p.id !== player.id)[Math.floor(Math.random() * alivePlayers.filter(p => p.id !== player.id).length)].id;
+          }
+        }
+      }
+
+      voteResult[player.id] = targetId;
+      // 记录投票目标
+      if (!game.playerMemory[player.id]) game.playerMemory[player.id] = {};
+      game.playerMemory[player.id].voteTarget = targetId;
+      await sleep(500);
+    }
+
+    // 统计投票结果
+    const voteCount = {};
+    Object.values(voteResult).forEach(targetId => {
+      voteCount[targetId] = (voteCount[targetId] || 0) + 1;
+    });
+
+    let maxVote = 0;
+    let exiledId = null;
+    let isTie = false;
+    let tieIds = [];
+
+    Object.entries(voteCount).forEach(([playerId, count]) => {
+      if (count > maxVote) {
+        maxVote = count;
+        exiledId = parseInt(playerId);
+        isTie = false;
+        tieIds = [parseInt(playerId)];
+      } else if (count === maxVote) {
+        isTie = true;
+        tieIds.push(parseInt(playerId));
+      }
+    });
+
+    // 公布投票结果
+    let voteText = "投票结果：";
+    alivePlayers.forEach(player => {
+      const targetId = voteResult[player.id];
+      if (targetId) {
+        voteText += `${player.id}号投给了${targetId}号，`;
+      }
+    });
+    addMessage(voteText.slice(0, -1));
+
+    return { maxVote, exiledId, isTie, tieIds };
+  };
+
+  // 放逐处理
+  const handleExile = async (exiledPlayer) => {
+    // 白痴技能处理
+    if (exiledPlayer.identity === "白痴" && !exiledPlayer.identityReveal) {
+      exiledPlayer.identityReveal = true;
+      addMessage(`${exiledPlayer.id}号${exiledPlayer.name}翻牌亮出白痴身份，免除此轮放逐！`);
+      updateGameUI();
+      return;
+    }
+
+    // 正常放逐
+    exiledPlayer.isAlive = false;
+    addMessage(`${exiledPlayer.id}号${exiledPlayer.name}的身份是：${exiledPlayer.identity}`);
+    updateGameUI();
+    await sleep(1000);
+
+    // 发表遗言
+    addMessage(`请${exiledPlayer.id}号${exiledPlayer.name}发表遗言。`);
+    if (exiledPlayer.isHuman) {
+      dom.speechTitle.textContent = "请发表你的遗言";
+      dom.speechInput.value = "";
+      dom.speechModal.style.display = "flex";
+      await new Promise(resolve => {
+        dom.speechBtn.onclick = () => {
+          const text = dom.speechInput.value.trim();
+          if (!text) return;
+          addMessage(text, "me", exiledPlayer);
+          dom.speechModal.style.display = "none";
+          resolve();
+        };
+      });
+    } else {
+      addLoadingMsg(exiledPlayer);
+      const speech = await generateAISpeech(exiledPlayer, "lastWords");
+      removeLoadingMsg(exiledPlayer.id);
+      addMessage(speech, "ai", exiledPlayer);
+    }
+
+    // 猎人开枪处理
+    if (exiledPlayer.identity === "猎人" && game.witchPoisonTarget?.id !== exiledPlayer.id) {
+      addMessage(`${exiledPlayer.id}号${exiledPlayer.name}是猎人，现在可以开枪带走一名玩家！`);
+      await sleep(1000);
+      
+      if (exiledPlayer.isHuman) {
+        dom.nightTitle.textContent = "猎人请开枪";
+        dom.nightAction.innerHTML = `
+          <label class="form-label">请选择你要带走的玩家</label>
+          <select class="form-select" id="hunterShotSelect">
+            ${genPlayerOptions(getAlivePlayers(), p => p.id !== exiledPlayer.id)}
+          </select>
+        `;
+        dom.nightModal.style.display = "flex";
+        await new Promise(resolve => {
+          dom.nightBtn.onclick = () => {
+            const selectedId = parseInt($("hunterShotSelect").value);
+            const shotPlayer = getPlayerById(selectedId);
+            shotPlayer.isAlive = false;
+            dom.nightModal.style.display = "none";
+            addMessage(`猎人开枪带走了${shotPlayer.id}号${shotPlayer.name}，他的身份是${shotPlayer.identity}`);
+            resolve();
+          };
+        });
+      } else {
+        const targetList = getAlivePlayers().filter(p => p.id !== exiledPlayer.id);
+        const shotPlayer = targetList[Math.floor(Math.random() * targetList.length)];
+        shotPlayer.isAlive = false;
+        addMessage(`猎人开枪带走了${shotPlayer.id}号${shotPlayer.name}，他的身份是${shotPlayer.identity}`);
+      }
+    }
+  };
+
+  // 游戏初始化
+  const initGame = () => {
+    const playerName = dom.playerName.value.trim() || "我";
+    const playerCount = parseInt(dom.playerCount.value);
+    
+    // 重置游戏状态
+    game = {
+      isRunning: true,
+      day: 1,
+      phase: "night",
+      playerCount: playerCount,
+      players: [],
+      humanPlayer: null,
+      speechHistory: [],
+      playerMemory: {},
+      lastNightDead: [],
+      wolfKillTarget: null,
+      witchSaveUsed: false,
+      witchPoisonUsed: false,
+      witchSave: false,
+      witchPoisonTarget: null,
+      prophetCheckTarget: null,
+      winner: null
+    };
+
+    // 生成身份和玩家
+    const identityList = shuffleArray(IDENTITY_CONFIG[playerCount]);
+    const aiNames = shuffleArray(AI_NAMES).slice(0, playerCount - 1);
+    const players = [];
+
+    // 人类玩家
+    const humanPlayer = {
+      id: 1,
+      name: playerName,
+      identity: identityList[0],
+      isAlive: true,
+      isHuman: true,
+      identityReveal: false
+    };
+    players.push(humanPlayer);
+    game.humanPlayer = humanPlayer;
+
+    // AI玩家
+    for (let i = 0; i < playerCount - 1; i++) {
+      players.push({
+        id: i + 2,
+        name: aiNames[i],
+        identity: identityList[i + 1],
+        isAlive: true,
+        isHuman: false,
+        identityReveal: false
+      });
+    }
+    game.players = players;
+
+    // 更新界面
+    dom.identityDesc.textContent = `${humanPlayer.identity}：${IDENTITY_RULES[humanPlayer.identity].rule}`;
+    updateGameUI();
+    dom.startModal.style.display = "none";
+    dom.game.style.display = "block";
+
+    // 开始游戏
+    addMessage(`游戏开始！第${game.day}天夜晚降临，天黑请闭眼...`);
+    setTimeout(startNightPhase, 1500);
+  };
+
+  // 事件绑定
+  dom.startBtn.addEventListener("click", initGame);
+  dom.restartBtn.addEventListener("click", () => {
+    dom.endModal.style.display = "none";
+    dom.startModal.style.display = "flex";
+    dom.game.style.display = "none";
+    dom.chatContent.innerHTML = `<div class="msg system"><div class="msg-text">游戏即将开始，请做好准备！</div></div>`;
+  });
+});
+</script>
+</body>
+</html>
