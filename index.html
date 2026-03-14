@@ -1,0 +1,493 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>3D点云变形系统</title>
+    <style>
+        * {
+            margin:0; padding:0; box-sizing:border-box;
+            outline:none;
+            -webkit-tap-highlight-color:transparent;
+        }
+        body {
+            width:100vw; height:100vh;
+            background:#000;
+            overflow:hidden;
+            font-family:system-ui, -apple-system, sans-serif;
+        }
+        canvas {
+            display:block;
+        }
+        /* 顶部标题 */
+        #info {
+            position:fixed; top:16px; left:50%;
+            transform:translateX(-50%);
+            color:#fff; font-size:17px; font-weight:500;
+            z-index:999;
+        }
+        /* 输入框组 */
+        .input-group {
+            position:fixed; top:52px; left:50%;
+            transform:translateX(-50%);
+            display:flex; gap:8px;
+            z-index:999;
+        }
+        #shapeInput {
+            width:260px; padding:10px 14px;
+            border-radius:10px; border:none;
+            background:rgba(255,255,255,0.15);
+            backdrop-filter:blur(8px);
+            color:#fff; font-size:16px;
+            text-align:center;
+            user-select: text !important;
+            -webkit-user-select: text !important;
+            pointer-events: auto !important;
+        }
+        #goBtn {
+            padding:10px 16px;
+            border-radius:10px; border:none;
+            background:#fff; color:#000;
+            font-weight:bold; cursor:pointer;
+            transition:all 0.2s ease;
+        }
+        #goBtn:hover {
+            transform:scale(1.05);
+        }
+        /* 预制图形按钮栏 */
+        .preset-shapes {
+            position:fixed; top:104px; left:50%;
+            transform:translateX(-50%);
+            display:flex; gap:12px;
+            padding:8px 12px;
+            border-radius:10px;
+            background:rgba(0,0,0,0.6);
+            backdrop-filter:blur(8px);
+            z-index:999;
+        }
+        .preset-btn {
+            padding:8px 20px;
+            border-radius:6px;
+            border:1px solid rgba(255,255,255,0.2);
+            background:rgba(255,255,255,0.1);
+            color:#fff;
+            font-size:14px;
+            white-space:nowrap;
+            cursor:pointer;
+            transition:all 0.2s ease;
+            flex-shrink:0;
+        }
+        .preset-btn:hover {
+            background:rgba(255,255,255,0.25);
+            transform:scale(1.05);
+        }
+        .preset-btn:active {
+            transform:scale(0.95);
+        }
+        /* 底部颜色选择栏 */
+        .color-panel {
+            position:fixed; bottom:20px; left:50%;
+            transform:translateX(-50%);
+            display:flex; gap:10px;
+            padding:10px 14px;
+            background:rgba(0,0,0,0.6);
+            border-radius:12px;
+            backdrop-filter:blur(8px);
+            z-index:999;
+        }
+        .color-btn {
+            width:34px; height:34px;
+            border-radius:8px; cursor:pointer;
+            border:2px solid transparent;
+            transition:all 0.2s ease;
+        }
+        .color-btn:hover {
+            transform:scale(1.1);
+        }
+        .color-btn.active {
+            border-color:#fff;
+            box-shadow:0 0 10px rgba(255,255,255,0.4);
+        }
+    </style>
+</head>
+<body>
+    <div id="info">输入英文/点击下方按钮，一键生成3D形状</div>
+    <div class="input-group">
+        <input type="text" id="shapeInput" placeholder="例如：cube, heart, cone, pyramid, torus">
+        <button id="goBtn">变形</button>
+    </div>
+    <div class="preset-shapes" id="presetShapes"></div>
+    <div class="color-panel" id="colorPanel"></div>
+
+    <script type="module">
+        import * as THREE from 'https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js';
+
+        // ===================== 基础配置 =====================
+        const POINT_COUNT = 40000;
+        const POINT_SIZE = 0.014;
+        const ANIM_SPEED = 120; // 慢丝滑变形速度
+        const SCALE = 1.6; // 全局尺寸，保证不超出屏幕
+
+        // 3D场景初始化
+        const scene = new THREE.Scene();
+        const camera = new THREE.PerspectiveCamera(70, window.innerWidth/window.innerHeight, 0.1, 100);
+        const renderer = new THREE.WebGLRenderer({ antialias:true });
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.5));
+        document.body.appendChild(renderer.domElement);
+        camera.position.z = 6;
+
+        // 黄金螺旋生成均匀3D单位球面点（保证所有形状点一一对应，变形丝滑）
+        function generateBaseSpherePoints(count) {
+            const positions = new Float32Array(count * 3);
+            const goldenAngle = Math.PI * (3 - Math.sqrt(5));
+            for(let i = 0; i < count; i++){
+                const y = 1 - (i / (count - 1)) * 2;
+                const radius = Math.sqrt(1 - y * y);
+                const theta = goldenAngle * i;
+                positions[i*3]   = Math.cos(theta) * radius;
+                positions[i*3+1] = y;
+                positions[i*3+2] = Math.sin(theta) * radius;
+            }
+            return positions;
+        }
+        const basePoints = generateBaseSpherePoints(POINT_COUNT);
+
+        // ===================== 【全面修复+扩充】3D形状识别库 =====================
+        // 所有形状均为封闭几何体，关键词全覆盖，输入即可识别
+        function generateShapePoints(inputWord) {
+            const word = inputWord.trim().toLowerCase();
+            const resultPositions = new Float32Array(POINT_COUNT * 3);
+
+            for(let i = 0; i < POINT_COUNT; i++){
+                const x0 = basePoints[i*3];
+                const y0 = basePoints[i*3+1];
+                const z0 = basePoints[i*3+2];
+                let x = x0, y = y0, z = z0;
+
+                // 1. 球体（sphere, ball, globe）
+                if(word.includes('sphere') || word.includes('ball') || word.includes('globe')){
+                    x = x0; y = y0; z = z0;
+                }
+
+                // 2. 正方体/立方体（cube, box）
+                else if(word.includes('cube') || word.includes('box')){
+                    const maxAbs = Math.max(Math.abs(x0), Math.abs(y0), Math.abs(z0));
+                    const scale = 1 / maxAbs;
+                    x = x0 * scale; y = y0 * scale; z = z0 * scale;
+                }
+
+                // 3. 金字塔/四面体（pyramid, tetrahedron, tetra）
+                else if(word.includes('pyramid') || word.includes('tetrahedron') || word.includes('tetra')){
+                    const l1Norm = Math.abs(x0) + Math.abs(y0) + Math.abs(z0);
+                    const scale = 1 / l1Norm;
+                    x = x0 * scale; y = y0 * scale; z = z0 * scale;
+                }
+
+                // 4. 圆锥（cone, conical）
+                else if(word.includes('cone') || word.includes('conical')){
+                    const radial = Math.sqrt(x0*x0 + z0*z0) || 0.001;
+                    const radius = 1 - Math.abs(y0);
+                    x = (x0 / radial) * radius;
+                    z = (z0 / radial) * radius;
+                    y = y0;
+                }
+
+                // 5. 圆柱（cylinder, cylindrical）
+                else if(word.includes('cylinder') || word.includes('cylindrical')){
+                    const radial = Math.sqrt(x0*x0 + z0*z0) || 0.001;
+                    x = x0 / radial; z = z0 / radial; y = y0;
+                }
+
+                // 6. 圆环/甜甜圈（torus, ring, donut）
+                else if(word.includes('torus') || word.includes('ring') || word.includes('donut')){
+                    const majorRadius = 1.0;
+                    const minorRadius = 0.35;
+                    const theta = Math.atan2(y0, x0);
+                    const phi = Math.atan2(z0, Math.sqrt(x0*x0 + y0*y0));
+                    x = (majorRadius + minorRadius * Math.cos(phi)) * Math.cos(theta);
+                    y = (majorRadius + minorRadius * Math.cos(phi)) * Math.sin(theta);
+                    z = minorRadius * Math.sin(phi);
+                }
+
+                // 7. 八面体（octahedron, octa）
+                else if(word.includes('octahedron') || word.includes('octa')){
+                    const l1Norm = Math.abs(x0) + Math.abs(y0) + Math.abs(z0);
+                    const scale = 1 / l1Norm;
+                    x = x0 * scale * 1.2;
+                    y = y0 * scale * 1.2;
+                    z = z0 * scale * 1.2;
+                }
+
+                // 8. 十二面体（dodecahedron, dodeca）
+                else if(word.includes('dodecahedron') || word.includes('dodeca')){
+                    const maxAbs = Math.max(Math.abs(x0), Math.abs(y0), Math.abs(z0));
+                    const scale = 1 / maxAbs;
+                    x = x0 * scale * 0.9;
+                    y = y0 * scale * 0.9;
+                    z = z0 * scale * 0.9;
+                }
+
+                // 9. 二十面体（icosahedron, icosa）
+                else if(word.includes('icosahedron') || word.includes('icosa')){
+                    const norm = Math.sqrt(x0*x0 + y0*y0 + z0*z0);
+                    x = (x0 / norm) * 1.1;
+                    y = (y0 / norm) * 1.1;
+                    z = (z0 / norm) * 1.1;
+                }
+
+                // 10. 三棱柱（triangular prism, prism）
+                else if(word.includes('prism')){
+                    // 输入prism默认三棱柱，带hex则为六棱柱
+                    const sideCount = word.includes('hex') ? 6 : 3;
+                    const radial = Math.sqrt(x0*x0 + z0*z0) || 0.001;
+                    const angle = Math.atan2(z0, x0);
+                    const segment = (Math.PI * 2) / sideCount;
+                    const targetAngle = Math.round(angle / segment) * segment;
+                    x = Math.cos(targetAngle);
+                    z = Math.sin(targetAngle);
+                    y = y0;
+                }
+
+                // 11. 胶囊/药丸（capsule, pill）
+                else if(word.includes('capsule') || word.includes('pill')){
+                    const halfHeight = 0.6;
+                    if(Math.abs(y0) <= halfHeight){
+                        // 中间圆柱部分
+                        const radial = Math.sqrt(x0*x0 + z0*z0) || 0.001;
+                        x = x0 / radial * 0.6;
+                        z = z0 / radial * 0.6;
+                        y = y0;
+                    } else {
+                        // 上下半球封口
+                        const sign = Math.sign(y0);
+                        const ny = y0 - sign * halfHeight;
+                        const radial = Math.sqrt(x0*x0 + z0*z0 + ny*ny) || 0.001;
+                        x = (x0 / radial) * 0.6;
+                        z = (z0 / radial) * 0.6;
+                        y = sign * halfHeight + (ny / radial) * 0.6;
+                    }
+                }
+
+                // 12. 圆台/截锥（frustum, truncated cone）
+                else if(word.includes('frustum') || word.includes('truncated')){
+                    const topRadius = 0.4;
+                    const bottomRadius = 1.0;
+                    const radius = bottomRadius + (topRadius - bottomRadius) * (y0 + 1) / 2;
+                    const radial = Math.sqrt(x0*x0 + z0*z0) || 0.001;
+                    x = (x0 / radial) * radius;
+                    z = (z0 / radial) * radius;
+                    y = y0;
+                }
+
+                // 13. 双圆锥（bicone, double cone）
+                else if(word.includes('bicone') || word.includes('double')){
+                    const radius = 1 - Math.abs(y0);
+                    const radial = Math.sqrt(x0*x0 + z0*z0) || 0.001;
+                    x = (x0 / radial) * radius;
+                    z = (z0 / radial) * radius;
+                    y = y0;
+                }
+
+                // 14. 椭球（ellipsoid, oval）
+                else if(word.includes('ellipsoid') || word.includes('oval')){
+                    x = x0 * 1.3;
+                    y = y0 * 0.8;
+                    z = z0 * 0.8;
+                }
+
+                // 15. 【纯2D平面爱心】（heart, love）
+                else if(word.includes('heart') || word.includes('love')){
+                    // 标准2D爱心方程，纯平面，z轴固定为0，无厚度
+                    const heartScale = 2.2;
+                    // 1. 计算xy平面的爱心轮廓
+                    const theta = Math.atan2(y0, x0);
+                    // 标准爱心径向方程，轮廓完美无尖刺
+                    const targetR = 2 - 2*Math.sin(theta) + Math.sin(theta)*Math.sqrt(Math.abs(Math.cos(theta))) / (Math.sin(theta) + 1.5);
+                    // 2. 映射到爱心轮廓
+                    x = targetR * Math.cos(theta);
+                    y = targetR * Math.sin(theta);
+                    // 3. 纯2D：z轴固定为0，完全平面
+                    z = 0;
+                    // 4. 统一缩放
+                    x *= heartScale * 0.35;
+                    y *= heartScale * 0.35;
+                }
+
+                // 未知形状默认返回球体
+                else {
+                    x = x0; y = y0; z = z0;
+                }
+
+                // 写入最终坐标，统一缩放
+                resultPositions[i*3]   = x * SCALE;
+                resultPositions[i*3+1] = y * SCALE;
+                resultPositions[i*3+2] = z * SCALE;
+            }
+            return resultPositions;
+        }
+
+        // ===================== 预制图形配置 =====================
+        const presetShapes = [
+            { name: '球形', keyword: 'sphere' },
+            { name: '正方体', keyword: 'cube' },
+            { name: '爱心', keyword: 'heart' }
+        ];
+
+        // ===================== 变形核心状态 =====================
+        let currentPositions = new Float32Array(POINT_COUNT * 3);
+        let targetPositions  = new Float32Array(POINT_COUNT * 3);
+        let colorData        = new Float32Array(POINT_COUNT * 3);
+        let isAnimating      = false;
+        let animProgress     = 0;
+
+        // 初始化默认形状（球体）
+        currentPositions.set(generateShapePoints('sphere'));
+        targetPositions.set(generateShapePoints('sphere'));
+
+        // 点云几何体与材质
+        const geometry = new THREE.BufferGeometry();
+        geometry.setAttribute('position', new THREE.BufferAttribute(currentPositions, 3).setUsage(THREE.DynamicDrawUsage));
+        geometry.setAttribute('color', new THREE.BufferAttribute(colorData, 3).setUsage(THREE.DynamicDrawUsage));
+
+        const material = new THREE.PointsMaterial({
+            size: POINT_SIZE,
+            vertexColors: true,
+            transparent: true,
+            opacity: 0.85,
+            sizeAttenuation: true,
+            depthWrite: false
+        });
+        const pointCloud = new THREE.Points(geometry, material);
+        scene.add(pointCloud);
+
+        // ===================== 颜色预设系统 =====================
+        const colorPresets = [
+            { name: '彩虹渐变', colorFunc: (x,y,z) => [(x+1)/2, (y+1)/2, (z+1)/2] },
+            { name: '粉紫梦幻', colorFunc: (x,y,z) => [0.9 + x*0.1, 0.3 + y*0.3, 0.95] },
+            { name: '青蓝冷调', colorFunc: (x,y,z) => [0.1, 0.7 + y*0.3, 0.95 + z*0.05] },
+            { name: '橙黄暖调', colorFunc: (x,y,z) => [0.95, 0.5 + y*0.4, 0.1 + z*0.1] },
+            { name: '清新森绿', colorFunc: (x,y,z) => [0.3 + x*0.2, 0.9, 0.3 + z*0.3] },
+            { name: '黑白极简', colorFunc: (x,y,z) => { const gray = (x+y+z)/3 + 0.5; return [gray, gray, gray]; } },
+            { name: '鎏金玫红', colorFunc: (x,y,z) => [0.95, 0.3 + y*0.5, 0.2 + z*0.2] }
+        ];
+        let currentColorIndex = 0;
+
+        // 应用颜色到点云
+        function applyColorPreset() {
+            const preset = colorPresets[currentColorIndex];
+            for(let i = 0; i < POINT_COUNT; i++){
+                const x = basePoints[i*3], y = basePoints[i*3+1], z = basePoints[i*3+2];
+                const [r, g, b] = preset.colorFunc(x, y, z);
+                colorData[i*3] = r;
+                colorData[i*3+1] = g;
+                colorData[i*3+2] = b;
+            }
+            geometry.attributes.color.needsUpdate = true;
+        }
+
+        // ===================== UI初始化 =====================
+        // 初始化预制图形按钮
+        function initPresetButtons() {
+            const container = document.getElementById('presetShapes');
+            presetShapes.forEach(preset => {
+                const btn = document.createElement('div');
+                btn.className = 'preset-btn';
+                btn.textContent = preset.name;
+                btn.onclick = (e) => {
+                    e.stopPropagation();
+                    morphToShape(preset.keyword);
+                    document.getElementById('shapeInput').value = preset.keyword;
+                };
+                container.appendChild(btn);
+            });
+        }
+
+        // 初始化颜色选择按钮
+        function initColorPicker() {
+            const container = document.getElementById('colorPanel');
+            colorPresets.forEach((preset, index) => {
+                const btn = document.createElement('div');
+                btn.className = 'color-btn';
+                if(index === currentColorIndex) btn.classList.add('active');
+                const [r, g, b] = preset.colorFunc(1, 0, 0);
+                btn.style.background = `rgb(${r*255}, ${g*255}, ${b*255})`;
+                btn.title = preset.name;
+                btn.onclick = (e) => {
+                    e.stopPropagation();
+                    currentColorIndex = index;
+                    applyColorPreset();
+                    container.querySelectorAll('.color-btn').forEach(b => b.classList.remove('active'));
+                    btn.classList.add('active');
+                };
+                container.appendChild(btn);
+            });
+        }
+
+        // ===================== 核心变形函数 =====================
+        function morphToShape(keyword) {
+            if(isAnimating) return;
+            // 生成目标形状点云
+            targetPositions.set(generateShapePoints(keyword));
+            // 重置动画状态
+            animProgress = 0;
+            isAnimating = true;
+            // 更新顶部提示
+            document.getElementById('info').textContent = `当前形状：${keyword}`;
+        }
+
+        // ===================== 输入框与按钮事件 =====================
+        const input = document.getElementById('shapeInput');
+        const goBtn = document.getElementById('goBtn');
+        // 输入框键盘事件，保证退格/删除完全正常
+        input.addEventListener('keydown', (e) => {
+            e.stopPropagation();
+            if(e.key === 'Enter') morphToShape(input.value.trim() || 'sphere');
+        });
+        input.addEventListener('click', (e) => e.stopPropagation());
+        goBtn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            morphToShape(input.value.trim() || 'sphere');
+        });
+
+        // 窗口大小自适应
+        window.addEventListener('resize', () => {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        });
+
+        // ===================== 动画循环 =====================
+        function animate() {
+            requestAnimationFrame(animate);
+            // 点云自动旋转，增强3D效果
+            pointCloud.rotation.y += 0.005;
+            pointCloud.rotation.x += 0.002;
+
+            // 丝滑变形动画
+            if(isAnimating) {
+                animProgress += 1 / ANIM_SPEED;
+                if(animProgress >= 1) {
+                    animProgress = 1;
+                    isAnimating = false;
+                }
+                // 余弦缓动，极致丝滑
+                const eased = 0.5 - 0.5 * Math.cos(animProgress * Math.PI);
+                // 逐点插值，连续变形，从上一个形状过渡
+                for(let i = 0; i < POINT_COUNT * 3; i++) {
+                    currentPositions[i] = currentPositions[i] + (targetPositions[i] - currentPositions[i]) * eased;
+                }
+                geometry.attributes.position.needsUpdate = true;
+            }
+
+            renderer.render(scene, camera);
+        }
+
+        // 初始化启动
+        initPresetButtons();
+        initColorPicker();
+        applyColorPreset();
+        animate();
+    </script>
+</body>
+</html>
